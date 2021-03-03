@@ -20,7 +20,6 @@ import com.jitendra.demo.domain.Person;
 import com.jitendra.demo.service.PersonService;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/persons")
@@ -41,11 +40,10 @@ public class PersonController {
 	}
 
 	@DeleteMapping("/{uid}")
-	public ResponseEntity<String> deletePerson(@PathVariable String uid) {
+	public String deletePerson(@PathVariable String uid) {
 
 		personService.deletePerson(uid);
-		String message = String.format("Person with Id - %s deleted !", uid);
-		return new ResponseEntity<String>(message, HttpStatus.OK);
+		return String.format("Person with Id - %s deleted !", uid);
 	}
 
 	@PutMapping
