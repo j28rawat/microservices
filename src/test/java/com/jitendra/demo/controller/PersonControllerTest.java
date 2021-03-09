@@ -1,174 +1,245 @@
 package com.jitendra.demo.controller;
 
-import static org.junit.Assert.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.web.server.LocalServerPort;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 import com.jitendra.demo.domain.Person;
 import com.jitendra.demo.exception.PersonException;
 import com.jitendra.demo.service.PersonService;
 import com.jitendra.demo.util.TestData;
 
-@RunWith(MockitoJUnitRunner.class)
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 public class PersonControllerTest {
 
-	private PersonController personController_mock;
+	@LocalServerPort
+	private int port;
 
-	@Mock
+	@Autowired
+	private TestRestTemplate restTemplate;
+
+	@MockBean
 	private PersonService personService_mock;
 
-	@Before
-	public void init() {
-		personController_mock = new PersonController(personService_mock);
+	private static final String rootUrl = "/persons";
+
+	@Test
+	public void findById_should_pass() throws Exception {
+
+		// given
+		Person expectedPerson = TestData.getSamplePerson();
+		when(personService_mock.findById(any())).thenReturn(expectedPerson);
+
+		// when
+		String url = "http://localhost:" + port + rootUrl + "/" + expectedPerson.getUid();
+		ResponseEntity<Person> response = restTemplate.getForEntity(new URL(url).toString(), Person.class);
+
+		// then
+		assertEquals(HttpStatus.OK, response.getStatusCode());
+		Person actualPerson = response.getBody();
+		assertEquals(expectedPerson.getFirstName(), actualPerson.getFirstName());
+		assertEquals(expectedPerson.getLastName(), actualPerson.getLastName());
+		assertEquals(expectedPerson.getUid(), actualPerson.getUid());
+		assertEquals(expectedPerson.getAge(), actualPerson.getAge());
 	}
 
 	@Test
-	public void findById_should_pass() {
+	public void findById_should_fail() throws Exception {
 
 		// given
-		Person person = TestData.getSamplePerson();
-		given(personService_mock.findById(any())).willReturn(person);
-
-		// when
-		Person personResponse = personController_mock.findById(person.getUid());
-
-		// then
-		assertEquals(personResponse.getUid(), person.getUid());
-		assertEquals(personResponse.getFirstName(), person.getFirstName());
-		assertEquals(personResponse.getLastName(), person.getLastName());
-		assertEquals(personResponse.getAge(), person.getAge());
-	}
-
-	@Test(expected = PersonException.class)
-	public void findById_should_fail() {
-
-		// given
-		Person person = TestData.getSamplePerson();
+		Person expectedPerson = TestData.getSamplePerson();
 		given(personService_mock.findById(any())).willThrow(new PersonException());
 
 		// when
-		personController_mock.findById(person.getUid());
+		String url = "http://localhost:" + port + rootUrl + "/" + expectedPerson.getUid();
+		ResponseEntity<Person> response = restTemplate.getForEntity(new URL(url).toString(), Person.class);
+
+		// then
+		assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
 	}
 
 	@Test
-	public void findAll_should_pass() {
+	public void findAll_should_pass() throws Exception {
 
 		// given
-		List<Person> persons = new ArrayList<Person>();
+		List<Person> expectedPersons = new ArrayList<Person>();
 		Person person = TestData.getSamplePerson();
-		persons.add(person);
-		given(personService_mock.findAll()).willReturn(persons);
+		expectedPersons.add(person);
+		given(personService_mock.findAll()).willReturn(expectedPersons);
 
 		// when
-		List<Person> personsResponse = personController_mock.findAll();
+		String url = "http://localhost:" + port + rootUrl;
+		ResponseEntity<List<Person>> response = restTemplate.exchange(new URL(url).toString(), HttpMethod.GET, null,
+				new ParameterizedTypeReference<List<Person>>() {
+				});
 
 		// then
-		assertNotNull(personsResponse);
-		assertEquals(personsResponse.size(), persons.size());
-	}
-
-	@Test(expected = RuntimeException.class)
-	public void findAll_should_fail() {
-
-		// given
-		given(personService_mock.findAll()).willThrow(new RuntimeException());
-
-		// when
-		personController_mock.findAll();
+		assertNotNull(response.getBody());
+		List<Person> actualPersons = response.getBody();
+		assertEquals(expectedPersons.size(), actualPersons.size());
 	}
 
 	@Test
-	public void deletePerson_should_pass() {
+	public void findAll_should_fail() throws Exception {
 
 		// given
+		List<Person> expectedPersons = new ArrayList<Person>();
 		Person person = TestData.getSamplePerson();
+		expectedPersons.add(person);
+		String expectedErrorMessage = "Connection interrupted !";
+		given(personService_mock.findAll()).willThrow(new PersonException(expectedErrorMessage));
 
 		// when
-		String response = personController_mock.deletePerson(person.getUid());
+		String url = "http://localhost:" + port + rootUrl;
+		ResponseEntity<Exception> actualResponse = restTemplate.exchange(new URL(url).toString(), HttpMethod.GET, null,
+				Exception.class);
 
 		// then
-		verify(personService_mock, times(1)).deletePerson(person.getUid());
-		assertEquals(response, String.format("Person with Id - %s deleted !", person.getUid()));
-	}
-
-	@Test(expected = RuntimeException.class)
-	public void deletePerson_should_fail() {
-
-		// given
-		Person person = TestData.getSamplePerson();
-		doThrow(new RuntimeException()).when(personService_mock).deletePerson(person.getUid());
-
-		// when
-		personController_mock.deletePerson(person.getUid());
+		assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, actualResponse.getStatusCode());
+		Exception actualException = actualResponse.getBody();
+		assertEquals(expectedErrorMessage, actualException.getMessage());
 	}
 
 	@Test
-	public void updatePerson_should_pass() {
+	public void deletePerson_should_pass() throws Exception {
 
 		// given
-		Person person = TestData.getSamplePerson();
-		given(personService_mock.updatePerson(any())).willReturn(person);
+		Person expectedPerson = TestData.getSamplePerson();
+		String expectedDeletionMessage = String.format("Person with Id - %s deleted !", expectedPerson.getUid());
 
 		// when
-		Person personResponse = personController_mock.updatePerson(person);
+		String url = "http://localhost:" + port + rootUrl + "/" + expectedPerson.getUid();
+		ResponseEntity<String> actualResponse = restTemplate.exchange(new URL(url).toString(), HttpMethod.DELETE, null,
+				String.class);
 
 		// then
-		assertEquals(personResponse.getUid(), person.getUid());
-		assertEquals(personResponse.getFirstName(), person.getFirstName());
-		assertEquals(personResponse.getLastName(), person.getLastName());
-		assertEquals(personResponse.getAge(), person.getAge());
-	}
-
-	@Test(expected = PersonException.class)
-	public void updatePerson_should_fail() {
-
-		// given
-		Person person = TestData.getSamplePerson();
-		given(personService_mock.updatePerson(any())).willThrow(new PersonException());
-
-		// when
-		personController_mock.updatePerson(person);
+		assertEquals(HttpStatus.OK, actualResponse.getStatusCode());
+		verify(personService_mock, times(1)).deletePerson(any());
+		assertEquals(expectedDeletionMessage, actualResponse.getBody());
 	}
 
 	@Test
-	public void addPerson_should_pass() {
+	public void deletePerson_should_fail() throws Exception {
 
 		// given
-		Person person = TestData.getSamplePerson();
-		given(personService_mock.addPerson(any())).willReturn(person);
+		Person expectedPerson = TestData.getSamplePerson();
+		String expectedErrorMessage = "Connection interrupted !";
+		doThrow(new PersonException(expectedErrorMessage)).when(personService_mock).deletePerson(any());
 
 		// when
-		Person personResponse = personController_mock.addPerson(person);
+		String url = "http://localhost:" + port + rootUrl + "/" + expectedPerson.getUid();
+		ResponseEntity<Exception> actualResponse = restTemplate.exchange(new URL(url).toString(), HttpMethod.DELETE,
+				null, Exception.class);
 
 		// then
-		assertEquals(personResponse.getUid(), person.getUid());
-		assertEquals(personResponse.getFirstName(), person.getFirstName());
-		assertEquals(personResponse.getLastName(), person.getLastName());
-		assertEquals(personResponse.getAge(), person.getAge());
+		assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, actualResponse.getStatusCode());
+		Exception actualException = actualResponse.getBody();
+		assertEquals(expectedErrorMessage, actualException.getMessage());
 	}
 
-	@Test(expected = PersonException.class)
-	public void addPerson_should_fail() {
+	@Test
+	public void updatePerson_should_pass() throws Exception {
 
 		// given
-		Person person = TestData.getSamplePerson();
-		given(personService_mock.addPerson(any())).willThrow(new PersonException());
+		Person expectedPerson = TestData.getSamplePerson();
+		when(personService_mock.updatePerson(any())).thenReturn(expectedPerson);
 
 		// when
-		personController_mock.addPerson(person);
+		String url = "http://localhost:" + port + rootUrl;
+		HttpEntity<Person> httpEntity = new HttpEntity<Person>(expectedPerson);
+		ResponseEntity<Person> actualResponse = restTemplate.exchange(new URL(url).toString(), HttpMethod.PUT,
+				httpEntity, Person.class);
+
+		// then
+		assertEquals(HttpStatus.OK, actualResponse.getStatusCode());
+		Person actualPerson = actualResponse.getBody();
+		assertEquals(expectedPerson.getFirstName(), actualPerson.getFirstName());
+		assertEquals(expectedPerson.getLastName(), actualPerson.getLastName());
+		assertEquals(expectedPerson.getUid(), actualPerson.getUid());
+		assertEquals(expectedPerson.getAge(), actualPerson.getAge());
 	}
 
+	@Test
+	public void updatePerson_should_fail() throws Exception {
+
+		// given
+		Person expectedPerson = TestData.getSamplePerson();
+		String expectedErrorMessage = "Connection interrupted !";
+		doThrow(new PersonException(expectedErrorMessage)).when(personService_mock).updatePerson(any());
+
+		// when
+		String url = "http://localhost:" + port + rootUrl;
+		HttpEntity<Person> httpEntity = new HttpEntity<Person>(expectedPerson);
+		ResponseEntity<Exception> actualResponse = restTemplate.exchange(new URL(url).toString(), HttpMethod.PUT,
+				httpEntity, Exception.class);
+
+		// then
+		assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, actualResponse.getStatusCode());
+		Exception actualException = actualResponse.getBody();
+		assertEquals(expectedErrorMessage, actualException.getMessage());
+	}
+
+	@Test
+	public void addPerson_should_pass() throws Exception {
+
+		// given
+		Person expectedPerson = TestData.getSamplePerson();
+		when(personService_mock.addPerson(any())).thenReturn(expectedPerson);
+
+		// when
+		String url = "http://localhost:" + port + rootUrl;
+		HttpEntity<Person> httpEntity = new HttpEntity<Person>(expectedPerson);
+		ResponseEntity<Person> actualResponse = restTemplate.exchange(new URL(url).toString(), HttpMethod.POST,
+				httpEntity, Person.class);
+
+		// then
+		assertEquals(HttpStatus.OK, actualResponse.getStatusCode());
+		Person actualPerson = actualResponse.getBody();
+		assertEquals(expectedPerson.getFirstName(), actualPerson.getFirstName());
+		assertEquals(expectedPerson.getLastName(), actualPerson.getLastName());
+		assertEquals(expectedPerson.getUid(), actualPerson.getUid());
+		assertEquals(expectedPerson.getAge(), actualPerson.getAge());
+	}
+
+	@Test
+	public void addPerson_should_fail() throws Exception {
+
+		// given
+		Person expectedPerson = TestData.getSamplePerson();
+		String expectedErrorMessage = "Connection interrupted !";
+		doThrow(new PersonException(expectedErrorMessage)).when(personService_mock).addPerson(any());
+
+		// when
+		String url = "http://localhost:" + port + rootUrl;
+		HttpEntity<Person> httpEntity = new HttpEntity<Person>(expectedPerson);
+		ResponseEntity<Exception> actualResponse = restTemplate.exchange(new URL(url).toString(), HttpMethod.POST,
+				httpEntity, Exception.class);
+
+		// then
+		assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, actualResponse.getStatusCode());
+		Exception actualException = actualResponse.getBody();
+		assertEquals(expectedErrorMessage, actualException.getMessage());
+	}
 }
